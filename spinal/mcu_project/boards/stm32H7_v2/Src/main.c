@@ -73,6 +73,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MICROROS_INIT_PING_TIMEOUT_MS      100
+#define MICROROS_INIT_PING_ATTEMPTS        1
+#define MICROROS_MONITOR_PING_INTERVAL_MS  2000
+#define MICROROS_MONITOR_PING_TIMEOUT_MS   20
+#define MICROROS_MONITOR_PING_ATTEMPTS     1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -206,7 +211,8 @@ static void microros_init_all(void)
   // 1) Register custom transport (must be done before rclc_support_init)
   microros_transport_init();
   
-  while (rmw_uros_ping_agent(100, 1) != RMW_RET_OK)
+  while (rmw_uros_ping_agent(MICROROS_INIT_PING_TIMEOUT_MS,
+                             MICROROS_INIT_PING_ATTEMPTS) != RMW_RET_OK)
     {
       osDelay(100);
     }
@@ -437,7 +443,7 @@ int main(void)
   idleTaskHandle = osThreadCreate(osThread(idleTask), NULL);
 
   /* definition and creation of rosPublish */
-  osThreadDef(rosPublish, rosPublishTask, osPriorityBelowNormal, 0, 128);
+  osThreadDef(rosPublish, rosPublishTask, osPriorityAboveNormal, 0, 1024);
   rosPublishHandle = osThreadCreate(osThread(rosPublish), NULL);
 
   /* definition and creation of voltage */
@@ -1361,10 +1367,11 @@ void rosSpinTaskFunc(void const * argument)
     {
       uint32_t now = HAL_GetTick();
 
-      if ((now - last_ping) >= 500)
+      if ((now - last_ping) >= MICROROS_MONITOR_PING_INTERVAL_MS)
         {
           osMutexWait(ros_cxt_.ros_mutex, osWaitForever);
-          rmw_ret_t ping_ret = rmw_uros_ping_agent(500, 2);
+          rmw_ret_t ping_ret = rmw_uros_ping_agent(MICROROS_MONITOR_PING_TIMEOUT_MS,
+                                                   MICROROS_MONITOR_PING_ATTEMPTS);
           osMutexRelease(ros_cxt_.ros_mutex);
 
           if (ping_ret != RMW_RET_OK)
@@ -1380,13 +1387,16 @@ void rosSpinTaskFunc(void const * argument)
       if(ros_cxt_.ready.load())
         {
           osMutexWait(ros_cxt_.ros_mutex, osWaitForever);
-          rclc_executor_spin_some(&ros_cxt_.executor, RCL_MS_TO_NS(1));
+          rclc_executor_spin_some(&ros_cxt_.executor, RCL_MS_TO_NS(0));
           gps_ros_mod_.publish();
-          estimator_ros_mod_.publish();
           osMutexRelease(ros_cxt_.ros_mutex);
+          osThreadYield();
         }
-
-      osDelay(1);
+      else
+        {
+          osDelay(1);
+        }
+      /* osDelay(1); */
     }
   /* USER CODE END rosSpinTaskFunc */
 }
@@ -1419,15 +1429,28 @@ void idleTaskFunc(void const * argument)
 void rosPublishTask(void const * argument)
 {
   /* USER CODE BEGIN rosPublishTask */
+  (void)argument;
+
   for(;;)
     {
-      /* /\* publish one message from ring buffer *\/ */
-      /* if(nh_.publish() == BUFFER_EMPTY) */
-      /*   { */
-      /*     /\* if no messages in ring buffer, we kindly sleep for 1ms *\/ */
-      /*     osDelay(1); */
-      /*   } */
-      osDelay(1);
+      if(ros_cxt_.ready.load())
+        {
+          const uint32_t next_publish_delay_ms = estimator_ros_mod_.millisToNextPublish();
+          if (next_publish_delay_ms > 0)
+            {
+              osDelay(next_publish_delay_ms);
+              continue;
+            }
+
+          osMutexWait(ros_cxt_.ros_mutex, osWaitForever);
+          estimator_ros_mod_.publish();
+          osMutexRelease(ros_cxt_.ros_mutex);
+          osThreadYield();
+        }
+      else
+        {
+          osDelay(1);
+        }
 
   }
   /* USER CODE END rosPublishTask */

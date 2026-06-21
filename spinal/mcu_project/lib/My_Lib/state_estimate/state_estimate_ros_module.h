@@ -24,6 +24,7 @@ public:
   void update() override;
 
   void publish() override;
+  uint32_t millisToNextPublish() const;
 
 private:
   static constexpr uint8_t IMU_PUB_INTERVAL_MS = 5; // 200Hz

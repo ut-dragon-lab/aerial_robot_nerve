@@ -23,6 +23,9 @@ public:
   void create_entities(rcl_node_t& node) override;
   void update() override;
 
+  void publish() override;
+  uint32_t millisToNextPublish() const;
+
 private:
   static constexpr uint8_t IMU_PUB_INTERVAL_MS = 5; // 200Hz
   uint32_t last_imu_pub_time_ms_{0};
@@ -45,8 +48,6 @@ private:
 
   void magDeclinationCallback(const spinal_msgs__srv__MagDeclination_Request& req,
                               spinal_msgs__srv__MagDeclination_Response& res);
-
-  void publishImuIfNeeded_();
 };
 
 #endif  // !SIMULATION

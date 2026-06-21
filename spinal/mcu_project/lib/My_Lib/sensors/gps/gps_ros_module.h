@@ -23,9 +23,9 @@ public:
 
   void gpsConfigCallback(const std_msgs__msg__UInt8& config_msg){}
 
-  void publish_from_gps_state();
-
   GPS* getGpsHw() {return &gps_;}
+
+  void publish() override;
 
 private:
 

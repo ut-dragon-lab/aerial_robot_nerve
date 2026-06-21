@@ -228,7 +228,7 @@ def main() -> None:
     ap.add_argument(
         "--clean-stage",
         action="store_true",
-        help="Delete existing staged directory before copying.",
+        help="Deprecated: staged directory is always cleaned before copying.",
     )
     ap.add_argument(
         "--clean-extra",
@@ -245,6 +245,7 @@ def main() -> None:
     microros_root = ws_src / args.microros_folder
     if not microros_root.is_dir():
         raise SystemExit(f"[error] micro-ROS folder not found: {microros_root}")
+    microros_build_output = microros_root / "libmicroros"
 
     spinal_msgs_src = args.spinal_msgs.expanduser().resolve()
     validate_ros_interface_pkg(spinal_msgs_src)
@@ -273,6 +274,10 @@ def main() -> None:
 
     docker_cmd_prefix = ["sudo", "docker"]
 
+    if microros_build_output.exists():
+        remove_if_exists(microros_build_output)
+        print(f"[info] removed stale micro-ROS build output: {microros_build_output}")
+
     run(docker_cmd_prefix + ["pull", args.docker_image])
 
     run(
@@ -293,8 +298,9 @@ def main() -> None:
     print(f"[info] include dir : {include_dir}")
 
     stage_root = stm32_lib / args.stage_subdir
-    if args.clean_stage and stage_root.exists():
+    if stage_root.exists():
         remove_if_exists(stage_root)
+        print(f"[info] removed stale staged micro-ROS files: {stage_root}")
 
     lib_dst_dir = stage_root / "lib"
     inc_dst_dir = stage_root / "include"

@@ -15,4 +15,34 @@
       <statustip>A plugin for IMU calibration</statustip>
     </qtgui>
   </class>
+  <class
+      name="ServoMonitor"
+      type="spinal.servo_monitor.ServoMonitor"
+      base_class_type="rqt_gui_py::Plugin">
+    <description>Servo monitor GUI plugin (ROS 2)</description>
+    <qtgui>
+      <group>
+        <icon type="theme">folder</icon>
+        <label>aerial robot</label>
+      </group>
+      <label>Servo Monitor</label>
+      <icon type="theme">utilities-system-monitor</icon>
+      <statustip>A plugin for servo state monitoring and torque control</statustip>
+    </qtgui>
+  </class>
+  <class
+      name="BoardConfigurator"
+      type="spinal.board_configurator.BoardConfigurator"
+      base_class_type="rqt_gui_py::Plugin">
+    <description>Board configurator GUI plugin (ROS 2)</description>
+    <qtgui>
+      <group>
+        <icon type="theme">folder</icon>
+        <label>aerial robot</label>
+      </group>
+      <label>Board Configurator</label>
+      <icon type="theme">preferences-system</icon>
+      <statustip>A plugin for servo and board configuration</statustip>
+    </qtgui>
+  </class>
 </library>

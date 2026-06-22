@@ -8,7 +8,14 @@
 class BaroRosModule : public RosModuleBase
 {
 public:
-  BaroRosModule() = default;
+  BaroRosModule()
+  : RosModuleBase(
+      RosModuleEntityCapacity()
+        .max_subscriptions(1)
+        .max_publishers(0)
+        .max_services(0)
+        .max_timers(0))
+  {}
 
   void init_hw(I2C_HandleTypeDef* hi2c,
                GPIO_TypeDef* baro_ctrl_port, uint16_t baro_ctrl_pin)

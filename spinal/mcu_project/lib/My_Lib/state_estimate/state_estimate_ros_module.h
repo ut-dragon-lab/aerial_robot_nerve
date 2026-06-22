@@ -13,7 +13,14 @@
 class StateEstimateRosModule final : public RosModuleBase
 {
 public:
-  StateEstimateRosModule() = default;
+  StateEstimateRosModule()
+  : RosModuleBase(
+      RosModuleEntityCapacity()
+        .max_subscriptions(0)
+        .max_publishers(1)
+        .max_services(1)
+        .max_timers(0))
+  {}
 
   void init_hw(IMU* imu, Baro* baro, GPS* gps)
   {

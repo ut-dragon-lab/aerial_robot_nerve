@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import math
 import os
 import time
 from functools import reduce
@@ -15,16 +16,33 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from rqt_gui_py.plugin import Plugin
 
 from python_qt_binding import loadUi
-from python_qt_binding.QtCore import Qt, QTimer
-from python_qt_binding.QtGui import QColor
-from python_qt_binding.QtWidgets import QAction, QTableWidgetItem, QWidget
+from python_qt_binding.QtCore import QPointF, Qt, QRectF, QSize, Signal, QTimer
+from python_qt_binding.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from python_qt_binding.QtWidgets import (
+    QAction,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QSpinBox,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from spinal_msgs.msg import ServoStates, ServoTorqueCmd, ServoTorqueStates
+from spinal_msgs.msg import ServoControlCmd, ServoStates, ServoTorqueCmd, ServoTorqueStates
 from spinal_msgs.srv import GetBoardInfo, SetBoardConfig, SetDirectServoConfig
 
 
 DISCOVERY_TIMEOUT_SEC = 2.0
 SERVICE_WAIT_TIMEOUT_SEC = 2.0
+SERVO_POSITION_MIN = 0
+SERVO_POSITION_MAX = 4095
+SERVO_POSITION_RANGE = SERVO_POSITION_MAX - SERVO_POSITION_MIN + 1
+DEFAULT_HOMING_OFFSET = 2048
 
 
 def _ns_join(ns: str, name: str) -> str:
@@ -40,6 +58,151 @@ def _best_effort_qos(depth: int = 10) -> QoSProfile:
         reliability=ReliabilityPolicy.BEST_EFFORT,
         durability=DurabilityPolicy.VOLATILE,
     )
+
+
+def _position_to_degrees(position) -> float:
+    if position is None:
+        return 0.0
+    return (int(position) % SERVO_POSITION_RANGE) * 360.0 / SERVO_POSITION_RANGE
+
+
+class ServoDialWidget(QWidget):
+    targetPositionChanged = Signal(int, bool)
+    targetPositionCommitted = Signal(int)
+
+    def __init__(self, parent=None):
+        super(ServoDialWidget, self).__init__(parent)
+        self.setMinimumSize(160, 160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setMouseTracking(True)
+        self._current_position = None
+        self._target_position = 2047
+        self._dragging = False
+
+    def sizeHint(self):
+        return QSize(260, 260)
+
+    def setCurrentPosition(self, position):
+        self._current_position = None if position is None else int(position)
+        self.update()
+
+    def setTargetPosition(self, position):
+        self._target_position = max(SERVO_POSITION_MIN, min(SERVO_POSITION_MAX, int(position)))
+        self.update()
+
+    def paintEvent(self, _event):
+        side = max(40, min(self.width(), self.height()) - 14)
+        radius = side / 2.0
+        center = self.rect().center()
+        ring_rect = QRectF(center.x() - radius, center.y() - radius, side, side)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), self.palette().window())
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(38, 41, 47)))
+        painter.drawEllipse(ring_rect)
+
+        inner_radius = radius * 0.76
+        inner_rect = QRectF(center.x() - inner_radius, center.y() - inner_radius,
+                            inner_radius * 2.0, inner_radius * 2.0)
+        painter.setBrush(QBrush(QColor(216, 220, 221)))
+        painter.drawEllipse(inner_rect)
+
+        core_radius = radius * 0.54
+        core_rect = QRectF(center.x() - core_radius, center.y() - core_radius,
+                           core_radius * 2.0, core_radius * 2.0)
+        painter.setBrush(QBrush(QColor(43, 45, 51)))
+        painter.drawEllipse(core_rect)
+
+        self._drawNeedle(painter, center, radius * 0.78, self._target_position,
+                         QColor(18, 210, 89), 5)
+        if self._current_position is not None:
+            self._drawNeedle(painter, center, radius * 0.64, self._current_position,
+                             QColor(255, 37, 37), 5)
+
+        self._drawCenterText(painter, core_rect)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._dragging = True
+            self._setTargetFromPoint(event.pos(), True)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            self._setTargetFromPoint(event.pos(), True)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._dragging:
+            self._dragging = False
+            self._setTargetFromPoint(event.pos(), False)
+            self.targetPositionCommitted.emit(self._target_position)
+
+    def _setTargetFromPoint(self, point, dragging):
+        center = self.rect().center()
+        rad = math.atan2(point.y() - center.y(), point.x() - center.x())
+        normalized = (rad + math.pi / 2.0) % (2.0 * math.pi)
+        # Dynamixel positions increase counter-clockwise; Qt screen coordinates
+        # make positive atan2 angles appear clockwise unless this is inverted.
+        ccw_normalized = (2.0 * math.pi - normalized) % (2.0 * math.pi)
+        position = int(round(ccw_normalized * SERVO_POSITION_RANGE / (2.0 * math.pi)))
+        position = max(SERVO_POSITION_MIN, min(SERVO_POSITION_MAX, position))
+        if position == self._target_position:
+            return
+        self._target_position = position
+        self.update()
+        self.targetPositionChanged.emit(position, dragging)
+
+    def _drawNeedle(self, painter, center, length, position, color, width):
+        rad = (int(position) % SERVO_POSITION_RANGE) * 2.0 * math.pi / SERVO_POSITION_RANGE
+        rad = -rad - math.pi / 2.0
+        end_x = center.x() + math.cos(rad) * length
+        end_y = center.y() + math.sin(rad) * length
+        painter.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(QPointF(center), QPointF(end_x, end_y))
+
+    def _drawCenterText(self, painter, core_rect):
+        painter.setPen(QPen(QColor(42, 230, 218)))
+
+        if self._current_position is None:
+            large_text = '--'
+            small_text = 'current'
+        else:
+            large_text = f'{_position_to_degrees(self._current_position):.1f}'
+            small_text = f'deg / {int(self._current_position)} bit'
+
+        large_rect = QRectF(
+            core_rect.left() + core_rect.width() * 0.08,
+            core_rect.top() + core_rect.height() * 0.18,
+            core_rect.width() * 0.84,
+            core_rect.height() * 0.42)
+        small_rect = QRectF(
+            core_rect.left() + core_rect.width() * 0.10,
+            core_rect.top() + core_rect.height() * 0.62,
+            core_rect.width() * 0.80,
+            core_rect.height() * 0.22)
+
+        large_font = self._fitFont(large_text, large_rect, int(core_rect.height() * 0.38), 12)
+        small_font = self._fitFont(small_text, small_rect, int(core_rect.height() * 0.14), 8)
+
+        painter.setFont(large_font)
+        painter.drawText(large_rect, Qt.AlignCenter, large_text)
+        painter.setFont(small_font)
+        painter.drawText(small_rect, Qt.AlignCenter, small_text)
+
+    def _fitFont(self, text, rect, max_pixel_size, min_pixel_size):
+        font = QFont('', max_pixel_size, QFont.Bold)
+        max_pixel_size = max(min_pixel_size, max_pixel_size)
+        for pixel_size in range(max_pixel_size, min_pixel_size - 1, -1):
+            font.setPixelSize(pixel_size)
+            metrics = QFontMetrics(font)
+            width = (metrics.horizontalAdvance(text)
+                     if hasattr(metrics, 'horizontalAdvance') else metrics.width(text))
+            if width <= rect.width() and metrics.height() <= rect.height():
+                return QFont(font)
+        font.setPixelSize(min_pixel_size)
+        return font
 
 
 class ServoMonitor(Plugin):
@@ -76,6 +239,8 @@ class ServoMonitor(Plugin):
             SetBoardConfig, _ns_join(robot_ns, 'set_board_config'))
         self.set_direct_servo_config_client_ = self.node.create_client(
             SetDirectServoConfig, _ns_join(robot_ns, 'direct_servo_config'))
+        self.servo_control_pub_ = self.node.create_publisher(
+            ServoControlCmd, _ns_join(robot_ns, 'servo/target_states'), 1)
         self.servo_torque_pub_ = self.node.create_publisher(
             ServoTorqueCmd, _ns_join(robot_ns, 'servo/torque_enable'), 1)
 
@@ -105,6 +270,10 @@ class ServoMonitor(Plugin):
 
         self._table_data = []
         self._servo_num = 0
+        self._selected_servo_index = None
+        self._last_target_pub_time = 0.0
+        self._syncing_target_control = False
+        self._syncing_homing_offset_control = False
         self._headers = [
             'torque', 'joint name', 'board', 'index', 'id', 'angle',
             'temperature', 'load', 'error', 'pid_gains', 'profile_velocity',
@@ -117,6 +286,8 @@ class ServoMonitor(Plugin):
         context.add_widget(self._widget)
 
         self._widget.setLayout(self._widget.gridLayout)
+        self._installPositionControlPanel()
+        self._widget.servoTableWidget.currentCellChanged.connect(self._selectedServoChanged)
         self.joint_id_name_map = self._load_joint_id_name_map(robot_ns)
 
         self.servo_state_sub_ = self.node.create_subscription(
@@ -223,8 +394,8 @@ class ServoMonitor(Plugin):
             return None
 
     def servoTorqueControl(self, enable):
-        servo_index = self._widget.servoTableWidget.currentIndex().row()
-        if servo_index == -1:
+        servo_index = self._selectedServoIndex()
+        if servo_index is None:
             self.node.get_logger().error('No servo exists')
             return
         msg = ServoTorqueCmd()
@@ -254,9 +425,22 @@ class ServoMonitor(Plugin):
     def allServoOffButtonCallback(self):
         self.allServoTorqueControl(0)
 
+    def sendTargetPosition(self, position=None):
+        servo_index = self._selectedServoIndex()
+        if servo_index is None:
+            self.node.get_logger().error('No servo exists')
+            return
+        if position is None:
+            position = self.targetPositionSpinBox.value()
+
+        msg = ServoControlCmd()
+        msg.index = [servo_index]
+        msg.angles = [int(position)]
+        self.servo_control_pub_.publish(msg)
+
     def jointCalib(self):
-        servo_index = self._widget.servoTableWidget.currentIndex().row()
-        if servo_index == -1:
+        servo_index = self._selectedServoIndex()
+        if servo_index is None:
             self.node.get_logger().error('No servo exists')
             return
 
@@ -276,11 +460,7 @@ class ServoMonitor(Plugin):
             req.command = SetBoardConfig.Request.SET_SERVO_HOMING_OFFSET
             client = self.set_board_config_client_
 
-        try:
-            req.data.append(int(self._widget.homingOffsetLineEdit.text()))
-        except ValueError as e:
-            print(e)
-            return
+        req.data.append(self._homingOffsetValue())
 
         servo_trq_msg = ServoTorqueCmd()
         servo_trq_msg.index = [servo_index]
@@ -295,8 +475,8 @@ class ServoMonitor(Plugin):
             self.node.get_logger().info(str(bool(res.success)))
 
     def boardReboot(self):
-        servo_index = self._widget.servoTableWidget.currentIndex().row()
-        if servo_index == -1:
+        servo_index = self._selectedServoIndex()
+        if servo_index is None:
             self.node.get_logger().error('No servo exists')
             return
 
@@ -348,6 +528,8 @@ class ServoMonitor(Plugin):
             row[self._headers.index('temperature')] = servo_state.temp
             row[self._headers.index('load')] = servo_state.load
             row[self._headers.index('error')] = self.error2string(int(servo_state.error))
+            if servo_state.index == self._selected_servo_index:
+                self._syncControlPanelFromSelection(update_target=False)
 
     def servoTorqueStatesCallback(self, msg):
         for cnt, torque_enable in enumerate(msg.torque_enable, start=1):
@@ -382,6 +564,10 @@ class ServoMonitor(Plugin):
         for i in range(len(self._table_data)):
             self._widget.servoTableWidget.setVerticalHeaderItem(
                 i, QTableWidgetItem('servo' + str(i)))
+
+        if self._selected_servo_index is None and self._table_data:
+            self._widget.servoTableWidget.setCurrentCell(0, 0)
+        self._syncControlPanelFromSelection(update_target=False)
 
         self._widget.servoTableWidget.resizeColumnsToContents()
         self._widget.servoTableWidget.show()
@@ -418,3 +604,175 @@ class ServoMonitor(Plugin):
                 self._servo_num += 1
 
         self.updateTable()
+
+    def _installPositionControlPanel(self):
+        panel = QFrame(self._widget)
+        panel.setFrameShape(QFrame.StyledPanel)
+        panel.setFrameShadow(QFrame.Raised)
+
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(10)
+
+        self.servoDialWidget = ServoDialWidget(panel)
+        self.servoDialWidget.targetPositionChanged.connect(self._targetPositionChanged)
+        self.servoDialWidget.targetPositionCommitted.connect(self.sendTargetPosition)
+        layout.addWidget(self.servoDialWidget, 1)
+
+        controls = QVBoxLayout()
+        controls.setSpacing(4)
+        self.selectedServoLabel = QLabel('servo: -', panel)
+        self.currentPositionLabel = QLabel('Position: -- [bit] / -- [deg]', panel)
+        self.torqueStateLabel = QLabel('Torque: --', panel)
+
+        torque_controls = QHBoxLayout()
+        torque_controls.setSpacing(4)
+        self.selectedServoOnButton = QPushButton('servo on', panel)
+        self.selectedServoOffButton = QPushButton('servo off', panel)
+        self.selectedServoOnButton.clicked.connect(lambda _checked=False: self.servoOn())
+        self.selectedServoOffButton.clicked.connect(lambda _checked=False: self.servoOff())
+        torque_controls.addWidget(self.selectedServoOnButton)
+        torque_controls.addWidget(self.selectedServoOffButton)
+
+        self.targetPositionSpinBox = QSpinBox(panel)
+        self.targetPositionSpinBox.setRange(SERVO_POSITION_MIN, SERVO_POSITION_MAX)
+        self.targetPositionSpinBox.setValue(2047)
+        self.targetPositionSpinBox.setSuffix(' bit')
+        self.targetPositionSpinBox.valueChanged.connect(self._targetSpinBoxChanged)
+
+        self.sendWhileDraggingCheckBox = QCheckBox('send while dragging', panel)
+        self.sendWhileDraggingCheckBox.setChecked(True)
+
+        self.sendTargetButton = QPushButton('send target', panel)
+        self.sendTargetButton.clicked.connect(lambda _checked=False: self.sendTargetPosition())
+
+        homing_offset_controls = QHBoxLayout()
+        homing_offset_controls.setSpacing(4)
+        self.homingOffsetSpinBox = QSpinBox(panel)
+        self.homingOffsetSpinBox.setRange(SERVO_POSITION_MIN, SERVO_POSITION_MAX)
+        self.homingOffsetSpinBox.setValue(DEFAULT_HOMING_OFFSET)
+        self.homingOffsetSpinBox.setSuffix(' bit')
+        self.homingOffsetSpinBox.valueChanged.connect(self._homingOffsetSpinBoxChanged)
+        self.setHomingOffsetButton = QPushButton('set homing offset', panel)
+        self.setHomingOffsetButton.clicked.connect(lambda _checked=False: self.jointCalib())
+        homing_offset_controls.addWidget(QLabel('Homing Offset', panel))
+        homing_offset_controls.addWidget(self.homingOffsetSpinBox, 1)
+        homing_offset_controls.addWidget(self.setHomingOffsetButton)
+
+        if hasattr(self._widget, 'homingOffsetLineEdit'):
+            self._widget.homingOffsetLineEdit.setText(str(DEFAULT_HOMING_OFFSET))
+            self._widget.homingOffsetLineEdit.textChanged.connect(
+                self._homingOffsetLineEditChanged)
+
+        controls.addWidget(self.selectedServoLabel)
+        controls.addWidget(self.currentPositionLabel)
+        controls.addWidget(self.torqueStateLabel)
+        controls.addLayout(torque_controls)
+        controls.addWidget(self.targetPositionSpinBox)
+        controls.addWidget(self.sendWhileDraggingCheckBox)
+        controls.addWidget(self.sendTargetButton)
+        controls.addLayout(homing_offset_controls)
+        controls.addStretch(1)
+
+        layout.addLayout(controls, 2)
+
+        self.positionSplitter = QSplitter(Qt.Vertical, self._widget)
+        self.positionSplitter.setChildrenCollapsible(False)
+        self.positionSplitter.addWidget(panel)
+        self._widget.gridLayout.removeWidget(self._widget.servoTableWidget)
+        self.positionSplitter.addWidget(self._widget.servoTableWidget)
+        self.positionSplitter.setStretchFactor(0, 1)
+        self.positionSplitter.setStretchFactor(1, 3)
+        self.positionSplitter.setSizes([260, 560])
+
+        self._widget.gridLayout.addWidget(self.positionSplitter, 4, 1, 7, 4)
+
+    def _homingOffsetValue(self):
+        if hasattr(self, 'homingOffsetSpinBox'):
+            return int(self.homingOffsetSpinBox.value())
+        return int(self._widget.homingOffsetLineEdit.text())
+
+    def _homingOffsetSpinBoxChanged(self, value):
+        if self._syncing_homing_offset_control:
+            return
+        if hasattr(self._widget, 'homingOffsetLineEdit'):
+            self._syncing_homing_offset_control = True
+            self._widget.homingOffsetLineEdit.setText(str(int(value)))
+            self._syncing_homing_offset_control = False
+
+    def _homingOffsetLineEditChanged(self, text):
+        if self._syncing_homing_offset_control:
+            return
+        try:
+            value = int(text)
+        except ValueError:
+            return
+        value = max(SERVO_POSITION_MIN, min(SERVO_POSITION_MAX, value))
+        self._syncing_homing_offset_control = True
+        self.homingOffsetSpinBox.setValue(value)
+        self._syncing_homing_offset_control = False
+
+    def _selectedServoIndex(self):
+        row = self._widget.servoTableWidget.currentIndex().row()
+        if row < 0 or row >= self._servo_num:
+            return None
+        return row
+
+    def _selectedServoChanged(self, current_row, _current_column, _previous_row, _previous_column):
+        self._selected_servo_index = current_row if 0 <= current_row < self._servo_num else None
+        self._syncControlPanelFromSelection(update_target=True)
+
+    def _syncControlPanelFromSelection(self, update_target):
+        servo_index = self._selectedServoIndex()
+        self._selected_servo_index = servo_index
+        if servo_index is None or servo_index >= len(self._table_data):
+            self.selectedServoLabel.setText('servo: -')
+            self.currentPositionLabel.setText('Position: -- [bit] / -- [deg]')
+            self.torqueStateLabel.setText('Torque: --')
+            self.servoDialWidget.setCurrentPosition(None)
+            return
+
+        row = self._table_data[servo_index]
+        raw_position = row[self._headers.index('angle')]
+        torque_state = row[self._headers.index('torque')]
+        servo_id = row[self._headers.index('id')]
+        self.selectedServoLabel.setText(f'servo: {servo_index} / id: {servo_id}')
+        self.torqueStateLabel.setText(f'Torque: {torque_state}')
+
+        if raw_position is None:
+            self.currentPositionLabel.setText('Position: -- [bit] / -- [deg]')
+            self.servoDialWidget.setCurrentPosition(None)
+            return
+
+        position = int(raw_position)
+        degrees = _position_to_degrees(position)
+        self.currentPositionLabel.setText(f'Position: {position} [bit] / {degrees:.2f} [deg]')
+        self.servoDialWidget.setCurrentPosition(position)
+
+        if update_target:
+            target = position % SERVO_POSITION_RANGE
+            self._syncing_target_control = True
+            self.targetPositionSpinBox.setValue(target)
+            self.servoDialWidget.setTargetPosition(target)
+            self._syncing_target_control = False
+
+    def _targetSpinBoxChanged(self, position):
+        if self._syncing_target_control:
+            return
+        self.servoDialWidget.setTargetPosition(position)
+
+    def _targetPositionChanged(self, position, dragging):
+        self._syncing_target_control = True
+        self.targetPositionSpinBox.setValue(position)
+        self._syncing_target_control = False
+
+        if not dragging:
+            return
+        if not self.sendWhileDraggingCheckBox.isChecked():
+            return
+
+        now = time.monotonic()
+        if now - self._last_target_pub_time < 0.05:
+            return
+        self._last_target_pub_time = now
+        self.sendTargetPosition(position)

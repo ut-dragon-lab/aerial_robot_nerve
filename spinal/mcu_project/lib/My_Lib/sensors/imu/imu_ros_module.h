@@ -15,7 +15,14 @@
 class ImuRosModule : public RosModuleBase
 {
 public:
-  ImuRosModule() = default;
+  ImuRosModule()
+  : RosModuleBase(
+      RosModuleEntityCapacity()
+        .max_subscriptions(0)
+        .max_publishers(0)
+        .max_services(1)
+        .max_timers(0))
+  {}
 
   void addImu(IMU* imu);
 

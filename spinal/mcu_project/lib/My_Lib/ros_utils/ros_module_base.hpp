@@ -71,24 +71,70 @@ struct TimerEntry
   rcl_timer_callback_t cb{nullptr};
 };
 
+struct RosModuleEntityCapacity
+{
+  RosModuleEntityCapacity()
+  : max_sub_num(MAX_SUB_NUM),
+    max_pub_num(MAX_PUB_NUM),
+    max_srv_num(MAX_SRV_NUM),
+    max_timer_num(MAX_TIMER_NUM)
+  {}
+
+  RosModuleEntityCapacity& max_subscriptions(size_t value)
+  {
+    max_sub_num = value;
+    return *this;
+  }
+
+  RosModuleEntityCapacity& max_publishers(size_t value)
+  {
+    max_pub_num = value;
+    return *this;
+  }
+
+  RosModuleEntityCapacity& max_services(size_t value)
+  {
+    max_srv_num = value;
+    return *this;
+  }
+
+  RosModuleEntityCapacity& max_timers(size_t value)
+  {
+    max_timer_num = value;
+    return *this;
+  }
+
+  size_t max_sub_num;
+  size_t max_pub_num;
+  size_t max_srv_num;
+  size_t max_timer_num;
+};
+
 class RosModuleBase
 {
 public:
-  RosModuleBase(){}
+  explicit RosModuleBase(
+    const RosModuleEntityCapacity& capacity = RosModuleEntityCapacity())
+  : max_sub_num_(capacity.max_sub_num),
+    max_pub_num_(capacity.max_pub_num),
+    max_srv_num_(capacity.max_srv_num),
+    max_timer_num_(capacity.max_timer_num)
+  {}
 
   virtual ~RosModuleBase() = default;
 
   void reserve_entities()
   {
-    sub_entries_.reserve(MAX_SUB_NUM);
-    pub_entries_.reserve(MAX_PUB_NUM);
-    srv_entries_.reserve(MAX_SRV_NUM);
-    timer_entries_.reserve(MAX_TIMER_NUM);
+    sub_entries_.reserve(max_sub_num_);
+    pub_entries_.reserve(max_pub_num_);
+    srv_entries_.reserve(max_srv_num_);
+    timer_entries_.reserve(max_timer_num_);
   }
   
   virtual size_t executor_handles()
   {
-    size_t n = sub_entries_.size() + pub_entries_.size() + srv_entries_.size() + timer_entries_.size();
+    // Publishers are not added to the rclc executor.
+    size_t n = sub_entries_.size() + srv_entries_.size() + timer_entries_.size();
     return n;
   }
 
@@ -102,7 +148,7 @@ public:
     const rosidl_message_type_support_t* type_support,
     const char* topic_name)
   {
-    if (pub_entries_.size() >= MAX_PUB_NUM) return false;
+    if (pub_entries_.size() >= max_pub_num_) return false;
     if (type_support == nullptr || topic_name == nullptr) return false;
 
     rcl_ret_t rc = rclc_publisher_init_best_effort(
@@ -135,7 +181,7 @@ public:
     rclc_subscription_callback_t cb,
     rclc_executor_handle_invocation_t trig = ON_NEW_DATA)
   {
-    if (sub_entries_.size() >= MAX_SUB_NUM) return false;
+    if (sub_entries_.size() >= max_sub_num_) return false;
     if (type_support == nullptr || topic_name == nullptr) return false;
     if (msg_storage == nullptr || cb == nullptr) return false;
 
@@ -172,7 +218,7 @@ public:
     void* res_storage,
     rclc_service_callback_t cb)
   {
-    if (srv_entries_.size() >= MAX_SRV_NUM) return false;
+    if (srv_entries_.size() >= max_srv_num_) return false;
     if (type_support == nullptr || service_name == nullptr) return false;
     if (req_storage == nullptr || res_storage == nullptr || cb == nullptr) return false;
 
@@ -206,7 +252,7 @@ public:
     uint64_t period_ns,
     rcl_timer_callback_t cb)
   {
-    if (timer_entries_.size() >= MAX_TIMER_NUM) return false;
+    if (timer_entries_.size() >= max_timer_num_) return false;
     if (period_ns == 0 || cb == nullptr) return false;
 
     rcl_ret_t rc = rclc_timer_init_default(
@@ -292,6 +338,11 @@ protected:
   bool ros_entities_ready_{false};
   osMutexId* ros_mutex_ptr_ = nullptr;
   std::atomic<bool>* ros_ready_ = nullptr;
+
+  size_t max_sub_num_{MAX_SUB_NUM};
+  size_t max_pub_num_{MAX_PUB_NUM};
+  size_t max_srv_num_{MAX_SRV_NUM};
+  size_t max_timer_num_{MAX_TIMER_NUM};
 
   std::vector<SubEntry>   sub_entries_;
   std::vector<PubEntry>   pub_entries_;

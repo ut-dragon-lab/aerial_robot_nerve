@@ -12,7 +12,13 @@
 class GpsRosModule final : public RosModuleBase
 {
 public:
-  GpsRosModule(): RosModuleBase()
+  GpsRosModule()
+  : RosModuleBase(
+      RosModuleEntityCapacity()
+        .max_subscriptions(1)
+        .max_publishers(1)
+        .max_services(0)
+        .max_timers(0))
   {}
 
   void init_hw(UART_HandleTypeDef* huart, GPIO_TypeDef* led_port, uint16_t led_pin);

@@ -7,7 +7,14 @@
 class EncoderRosModule final : public RosModuleBase
 {
 public:
-  EncoderRosModule() = default;
+  EncoderRosModule()
+  : RosModuleBase(
+      RosModuleEntityCapacity()
+        .max_subscriptions(0)
+        .max_publishers(1)
+        .max_services(0)
+        .max_timers(0))
+  {}
 
   void init_hw(I2C_HandleTypeDef* hi2c);
 

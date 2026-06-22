@@ -12,6 +12,7 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(spinal_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 set(SPINAL_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/mcu_project/lib/My_Lib)
 
@@ -43,7 +44,7 @@ target_link_libraries(spinal_state_estimation
   rclcpp_lifecycle::rclcpp_lifecycle
 )
 
-ament_export_dependencies(spinal_msgs)
+ament_export_dependencies(spinal_msgs std_msgs)
 
 install(
   TARGETS spinal_state_estimation spinal_math

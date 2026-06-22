@@ -54,7 +54,7 @@
 #include "sensors/gps/gps_ros_module.h"
 #include "sensors/encoder/mag_encoder_ros_module.h"
 
-/* #include "battery_status/battery_status.h" */
+#include "battery_status/battery_status_ros_module.h"
 #include "servo/servo_ros_module.h"
 
 #include "state_estimate/state_estimate_ros_module.h"
@@ -141,7 +141,7 @@ ICM20948 imu_;
 
 BaroRosModule baro_ros_mod_;
 GpsRosModule gps_ros_mod_;
-/* BatteryStatus battery_status_; */
+BatteryStatusRosModule battery_status_ros_mod_;
 
 /* servo instance */
 DirectServoRosModule servo_ros_mod_;
@@ -361,18 +361,23 @@ int main(void)
   ros_mgr_.add(&estimator_ros_mod_);
 
 /*   DShot* dshotptr = nullptr; */
+#if DSHOT
+  battery_status_ros_mod_.init_hw(&hadc1, false);
+#else
+  battery_status_ros_mod_.init_hw(&hadc1);
+#endif
+  ros_mgr_.add(&battery_status_ros_mod_);
+
 /* #if DSHOT */
-/*   battery_status_.init(&hadc1, &nh_, false); */
   /* estimator_.init(&imu_, &baro_, &gps_, &node, &executor);  // imu + baro + gps => att + alt + pos(xy) */
 /*   dshot_.init(DSHOT600, &htim1,TIM_CHANNEL_1, &htim1,TIM_CHANNEL_2, &htim1,TIM_CHANNEL_3, &htim1, TIM_CHANNEL_4); */
 /*   dshot_.initTelemetry(&huart6); */
 /*   dshotptr = &dshot_; */
 /* #else */
-/*   battery_status_.init(&hadc1, &nh_); */
 /*   estimator_.init(&imu_, &baro_, &gps_, &nh_);  // imu + baro + gps => att + alt + pos(xy) */
 /* #endif */
 
-  FlashMemory::read(); //IMU calib data (including IMU in neurons)
+  FlashMemory::read(); // battery scale and IMU calib data (including IMU in neurons)
 
   const bool servo_connect = servo_ros_mod_.init_hw(&huart2, nullptr);
   if (servo_connect) {
@@ -443,11 +448,11 @@ int main(void)
   idleTaskHandle = osThreadCreate(osThread(idleTask), NULL);
 
   /* definition and creation of rosPublish */
-  osThreadDef(rosPublish, rosPublishTask, osPriorityAboveNormal, 0, 1024);
+  osThreadDef(rosPublish, rosPublishTask, osPriorityNormal, 0, 1024);
   rosPublishHandle = osThreadCreate(osThread(rosPublish), NULL);
 
   /* definition and creation of voltage */
-  osThreadDef(voltage, voltageTask, osPriorityLow, 0, 256);
+  osThreadDef(voltage, voltageTask, osPriorityNormal, 0, 256);
   voltageHandle = osThreadCreate(osThread(voltage), NULL);
 
   /* definition and creation of canRx */
@@ -1470,9 +1475,8 @@ void voltageTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-    /* battery_status_.update(); */
-    /* osDelay(VOLTAGE_CHECK_INTERVAL); */
-    osDelay(1);
+    battery_status_ros_mod_.update();
+    osDelay(VOLTAGE_CHECK_INTERVAL);
   }
   /* USER CODE END voltageTask */
 }

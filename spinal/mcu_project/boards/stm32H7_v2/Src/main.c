@@ -55,7 +55,7 @@
 #include "sensors/encoder/mag_encoder_ros_module.h"
 
 /* #include "battery_status/battery_status.h" */
-/* #include "servo/servo.h" */
+#include "servo/servo_ros_module.h"
 
 #include "state_estimate/state_estimate_ros_module.h"
 /* #include "flight_control/flight_control.h" */
@@ -143,8 +143,8 @@ BaroRosModule baro_ros_mod_;
 GpsRosModule gps_ros_mod_;
 /* BatteryStatus battery_status_; */
 
-/* /\* servo instance *\/ */
-/* DirectServo servo_; */
+/* servo instance */
+DirectServoRosModule servo_ros_mod_;
 /* DShot dshot_; */
 
 
@@ -374,11 +374,11 @@ int main(void)
 
   FlashMemory::read(); //IMU calib data (including IMU in neurons)
 
-/*   bool servo_connect = servo_.init(&huart2, &nh_, NULL); */
+  const bool servo_connect = servo_ros_mod_.init_hw(&huart2, nullptr);
+  if (servo_connect) {
+    ros_mgr_.add(&servo_ros_mod_);
+  }
 
-/*   DirectServo* servoptr = nullptr; */
-/*   if(servo_connect) servoptr = &servo_; */
-  
 /*   controller_.init(&htim1, &htim4, &estimator_, dshotptr, servoptr, &battery_status_, &nh_, &flightControlMutexHandle); */
 
 /*   bool nerve_connect = Spine::init(&hfdcan1, &nh_, &estimator_, &controller_, LED1_GPIO_Port, LED1_Pin); */
@@ -1389,6 +1389,7 @@ void rosSpinTaskFunc(void const * argument)
           osMutexWait(ros_cxt_.ros_mutex, osWaitForever);
           rclc_executor_spin_some(&ros_cxt_.executor, RCL_MS_TO_NS(0));
           gps_ros_mod_.publish();
+          servo_ros_mod_.publish();
           osMutexRelease(ros_cxt_.ros_mutex);
           osThreadYield();
         }
@@ -1504,14 +1505,14 @@ __weak void canRxTask(void const * argument)
 __weak void ServoTaskCallback(void const * argument)
 {
   /* USER CODE BEGIN ServoTaskCallback */
-  /* if (!servo_.connected()) { */
-  /*   osThreadTerminate(NULL);  // remove */
-  /*   return; */
-  /* } */
+  if (!servo_ros_mod_.connected()) {
+    osThreadTerminate(NULL);
+    return;
+  }
   /* Infinite loop */
   for(;;)
   {
-    /* servo_.update(); */
+    servo_ros_mod_.update();
     osDelay(1);
   }
   /* USER CODE END ServoTaskCallback */

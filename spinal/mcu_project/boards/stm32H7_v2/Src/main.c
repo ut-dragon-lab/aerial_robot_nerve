@@ -56,6 +56,7 @@
 
 #include "battery_status/battery_status_ros_module.h"
 #include "servo/servo_ros_module.h"
+#include "thruster/board/thruster_ros_module.h"
 
 #include "state_estimate/state_estimate_ros_module.h"
 /* #include "flight_control/flight_control.h" */
@@ -142,6 +143,7 @@ ICM20948 imu_;
 BaroRosModule baro_ros_mod_;
 GpsRosModule gps_ros_mod_;
 BatteryStatusRosModule battery_status_ros_mod_;
+ThrusterRosModule thruster_ros_mod_;
 
 /* servo instance */
 DirectServoRosModule servo_ros_mod_;
@@ -367,6 +369,13 @@ int main(void)
   battery_status_ros_mod_.init_hw(&hadc1);
 #endif
   ros_mgr_.add(&battery_status_ros_mod_);
+
+  thruster_ros_mod_.init_hw(&htim1, &htim4);
+#if DSHOT
+  thruster_ros_mod_.init_dshot_telemetry(&huart6);
+#endif
+  thruster_ros_mod_.setBatteryStatus(battery_status_ros_mod_.getBatteryCore());
+  ros_mgr_.add(&thruster_ros_mod_);
 
 /* #if DSHOT */
   /* estimator_.init(&imu_, &baro_, &gps_, &node, &executor);  // imu + baro + gps => att + alt + pos(xy) */
@@ -1330,6 +1339,7 @@ void coreTaskFunc(void const * argument)
       gps_ros_mod_.update();
       estimator_ros_mod_.update();
       /* controller_.update(); */
+      thruster_ros_mod_.sendCommand();
 
       /* Spine::update(); */
 
@@ -1395,6 +1405,7 @@ void rosSpinTaskFunc(void const * argument)
           rclc_executor_spin_some(&ros_cxt_.executor, RCL_MS_TO_NS(0));
           gps_ros_mod_.publish();
           servo_ros_mod_.publish();
+          thruster_ros_mod_.publish();
           osMutexRelease(ros_cxt_.ros_mutex);
           osThreadYield();
         }
@@ -1475,7 +1486,12 @@ void voltageTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
+#if DSHOT
+    thruster_ros_mod_.updateTelemetry();
+    battery_status_ros_mod_.publish();
+#else
     battery_status_ros_mod_.update();
+#endif
     osDelay(VOLTAGE_CHECK_INTERVAL);
   }
   /* USER CODE END voltageTask */

@@ -44,7 +44,7 @@ target_link_libraries(spinal_state_estimation
   rclcpp_lifecycle::rclcpp_lifecycle
 )
 
-ament_export_dependencies(spinal_msgs std_msgs)
+ament_export_dependencies(rclcpp rclcpp_lifecycle spinal_msgs std_msgs)
 
 install(
   TARGETS spinal_state_estimation spinal_math

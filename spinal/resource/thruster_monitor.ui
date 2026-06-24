@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ThrusterMonitor</class>
+ <widget class="QWidget" name="ThrusterMonitor">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>760</width>
+    <height>520</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string notr="true">Thruster Monitor</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

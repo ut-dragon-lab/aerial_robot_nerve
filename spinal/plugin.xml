@@ -45,4 +45,19 @@
       <statustip>A plugin for servo and board configuration</statustip>
     </qtgui>
   </class>
+  <class
+      name="ThrusterMonitor"
+      type="spinal.thruster_monitor.ThrusterMonitor"
+      base_class_type="rqt_gui_py::Plugin">
+    <description>Thruster command and telemetry GUI plugin (ROS 2)</description>
+    <qtgui>
+      <group>
+        <icon type="theme">folder</icon>
+        <label>aerial robot</label>
+      </group>
+      <label>Thruster Monitor</label>
+      <icon type="theme">utilities-system-monitor</icon>
+      <statustip>A plugin for thruster test commands and ESC telemetry monitoring</statustip>
+    </qtgui>
+  </class>
 </library>

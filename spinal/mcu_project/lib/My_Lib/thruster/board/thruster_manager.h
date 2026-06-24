@@ -42,6 +42,7 @@ public:
   float getTargetThrust(uint8_t index) const;
   uint16_t getMotorNumber() const { return motor_number_; }
   float getForceLandingThrust() const { return force_landing_thrust_; }
+  uint8_t getControlMode() const;
 
   bool motorPwmPublishReady(bool update_last_time = false);
   uint16_t getMotorPwmRosValue(uint8_t index) const;
@@ -78,6 +79,7 @@ private:
   uint32_t voltage_update_last_time_{0};
   uint32_t pwm_pub_last_time_{0};
   bool pwm_test_flag_{false};
+  bool start_control_flag_{false};
 
   float convertThrustToDuty_(float target_thrust) const;
   void updateVoltageFactor_();

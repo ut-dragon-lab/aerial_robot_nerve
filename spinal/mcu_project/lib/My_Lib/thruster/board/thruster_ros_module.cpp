@@ -78,12 +78,14 @@ void ThrusterRosModule::configure_message_storage_()
   pwms_msg_.motor_value.data = pwms_motor_value_buf_;
   pwms_msg_.motor_value.size = 0;
   pwms_msg_.motor_value.capacity = MAX_THRUSTER_NUM;
+  pwms_msg_.control_mode = ThrusterControlMode::CONTROL_MODE_NONE;
 }
 
 void ThrusterRosModule::fillPwms_()
 {
   const size_t motor_num = thruster_.getMotorNumber();
   pwms_msg_.motor_value.size = motor_num > MAX_THRUSTER_NUM ? MAX_THRUSTER_NUM : motor_num;
+  pwms_msg_.control_mode = thruster_.getControlMode();
 
   for (size_t i = 0; i < pwms_msg_.motor_value.size; ++i) {
     pwms_motor_value_buf_[i] = thruster_.getMotorPwmRosValue(static_cast<uint8_t>(i));

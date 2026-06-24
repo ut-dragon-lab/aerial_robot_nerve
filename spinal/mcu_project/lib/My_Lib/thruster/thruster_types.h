@@ -27,6 +27,16 @@ enum
 };
 }
 
+namespace ThrusterControlMode
+{
+enum
+{
+  CONTROL_MODE_NONE = 0,
+  CONTROL_MODE_TEST = 1,
+  CONTROL_MODE_START = 2
+};
+}
+
 struct ThrusterMotorInfo
 {
   float voltage{0.0f};

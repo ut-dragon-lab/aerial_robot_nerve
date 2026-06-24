@@ -48,6 +48,7 @@ bool ThrusterManager::applyPwmInfo(const ThrusterPwmInfo& info)
 
 void ThrusterManager::applyPwmTest(const ThrusterPwmTestCommand& cmd)
 {
+  if (start_control_flag_) return;
   if (cmd.motor_index_count && cmd.motor_index_count != cmd.pwms_count) return;
 
   if (cmd.pwms_count && !pwm_test_flag_) {
@@ -91,12 +92,20 @@ void ThrusterManager::applyPwmTest(const ThrusterPwmTestCommand& cmd)
 
 bool ThrusterManager::outputThrust(const float* target_thrust, size_t motor_count, bool start_control)
 {
+  start_control_flag_ = start_control;
   if (target_thrust == nullptr) return false;
 
   const size_t n = (motor_count > MAX_THRUSTER_NUM) ? MAX_THRUSTER_NUM : motor_count;
   setMotorNumber(static_cast<uint16_t>(n));
 
-  if (pwm_test_flag_) {
+  if (start_control_flag_ && pwm_test_flag_) {
+    pwm_test_flag_ = false;
+    for (size_t i = 0; i < MAX_THRUSTER_NUM; ++i) {
+      pwm_test_value_[i] = ThrusterConstants::IDLE_DUTY;
+    }
+  }
+
+  if (!start_control_flag_ && pwm_test_flag_) {
     for (size_t i = 0; i < MAX_THRUSTER_NUM; ++i) {
       target_pwm_[i] = pwm_test_value_[i];
       target_thrust_[i] = 0.0f;
@@ -141,7 +150,7 @@ void ThrusterManager::writeDuty(const float* target_duty, size_t motor_count)
 
 void ThrusterManager::sendCommand()
 {
-  if (!pwm_test_flag_) return;
+  if (!pwm_test_flag_ || start_control_flag_) return;
 
   for (size_t i = 0; i < MAX_THRUSTER_NUM; ++i) {
     target_pwm_[i] = pwm_test_value_[i];
@@ -159,6 +168,13 @@ float ThrusterManager::getTargetThrust(uint8_t index) const
 {
   if (index >= MAX_THRUSTER_NUM) return 0.0f;
   return target_thrust_[index];
+}
+
+uint8_t ThrusterManager::getControlMode() const
+{
+  if (start_control_flag_) return ThrusterControlMode::CONTROL_MODE_START;
+  if (pwm_test_flag_) return ThrusterControlMode::CONTROL_MODE_TEST;
+  return ThrusterControlMode::CONTROL_MODE_NONE;
 }
 
 bool ThrusterManager::motorPwmPublishReady(bool update_last_time)

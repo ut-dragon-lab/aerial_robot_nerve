@@ -30,6 +30,7 @@ public:
   void create_entities(rcl_node_t& node) override;
   void update() override;
 
+  StateEstimate* getStateEstimateCore() { return &estimator_; }
   void publish() override;
   uint32_t millisToNextPublish() const;
 

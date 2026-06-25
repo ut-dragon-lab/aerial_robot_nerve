@@ -57,9 +57,9 @@
 #include "battery_status/battery_status_ros_module.h"
 #include "servo/servo_ros_module.h"
 #include "thruster/board/thruster_ros_module.h"
+#include "flight_control/board/flight_control_ros_module.h"
 
 #include "state_estimate/state_estimate_ros_module.h"
-/* #include "flight_control/flight_control.h" */
 
 /* #include <Spine/spine.h> */
 
@@ -144,6 +144,7 @@ BaroRosModule baro_ros_mod_;
 GpsRosModule gps_ros_mod_;
 BatteryStatusRosModule battery_status_ros_mod_;
 ThrusterRosModule thruster_ros_mod_;
+FlightControlRosModule flight_control_ros_mod_;
 
 /* servo instance */
 DirectServoRosModule servo_ros_mod_;
@@ -393,7 +394,12 @@ int main(void)
     ros_mgr_.add(&servo_ros_mod_);
   }
 
-/*   controller_.init(&htim1, &htim4, &estimator_, dshotptr, servoptr, &battery_status_, &nh_, &flightControlMutexHandle); */
+  flight_control_ros_mod_.init_hw(
+    estimator_ros_mod_.getStateEstimateCore(),
+    thruster_ros_mod_.getThrusterManager(),
+    servo_connect ? servo_ros_mod_.getServoCore() : nullptr,
+    &flightControlMutexHandle);
+  ros_mgr_.add(&flight_control_ros_mod_);
 
 /*   bool nerve_connect = Spine::init(&hfdcan1, &nh_, &estimator_, &controller_, LED1_GPIO_Port, LED1_Pin); */
 
@@ -1338,7 +1344,7 @@ void coreTaskFunc(void const * argument)
       baro_ros_mod_.update();
       gps_ros_mod_.update();
       estimator_ros_mod_.update();
-      /* controller_.update(); */
+      flight_control_ros_mod_.update();
       thruster_ros_mod_.sendCommand();
 
       /* Spine::update(); */
@@ -1406,6 +1412,7 @@ void rosSpinTaskFunc(void const * argument)
           gps_ros_mod_.publish();
           servo_ros_mod_.publish();
           thruster_ros_mod_.publish();
+          flight_control_ros_mod_.publish();
           osMutexRelease(ros_cxt_.ros_mutex);
           osThreadYield();
         }

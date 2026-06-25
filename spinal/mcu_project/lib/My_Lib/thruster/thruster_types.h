@@ -63,6 +63,14 @@ struct ThrusterPwmTestCommand
   size_t pwms_count{0};
 };
 
+struct ThrusterControlLimits
+{
+  bool configured{false};
+  float min_thrust{0.0f};
+  float max_thrust{0.0f};
+  float force_landing_thrust{0.0f};
+};
+
 struct EscTelemetryData
 {
   int8_t temperature{0};

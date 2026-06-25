@@ -203,6 +203,23 @@ uint8_t ThrusterManager::getControlMode() const
   return ThrusterControlMode::CONTROL_MODE_NONE;
 }
 
+ThrusterControlLimits ThrusterManager::getControlLimits()
+{
+  ThrusterControlLimits limits;
+  limits.configured = configured();
+  limits.min_thrust = min_thrust_;
+  limits.force_landing_thrust = force_landing_thrust_;
+
+  if (!limits.configured || motor_info_count_ == 0) return limits;
+
+  updateVoltageFactor_();
+  if (v_factor_ > 0.0f) {
+    limits.max_thrust = motor_info_[motor_ref_index_].max_thrust / v_factor_;
+  }
+
+  return limits;
+}
+
 bool ThrusterManager::motorPwmPublishReady(bool update_last_time)
 {
   const uint32_t now = HAL_GetTick();

@@ -236,7 +236,6 @@ bool AttitudeController::applyFourAxisCommand(const FlightControlFourAxisCommand
 
 bool AttitudeController::applyRpyGains(const FlightControlRpyTerms& gains)
 {
-  if (motor_number_ == 0) return false;
   if (gains.motors_count != motor_number_ && gains.motors_count != 1) return false;
 
   if (gains.motors_count == 1) {

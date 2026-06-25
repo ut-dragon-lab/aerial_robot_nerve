@@ -14,7 +14,9 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>spinal_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>

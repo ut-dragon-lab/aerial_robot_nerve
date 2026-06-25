@@ -27,6 +27,7 @@ add_definitions(-DSIMULATION)
 add_library(spinal_math
   ${SPINAL_DIRS}/math/AP_Math.cpp
   ${SPINAL_DIRS}/math/matrix3.cpp
+  ${SPINAL_DIRS}/math/location.cpp
   ${SPINAL_DIRS}/math/vector2.cpp
   ${SPINAL_DIRS}/math/vector3.cpp
   ${SPINAL_DIRS}/math/quaternion.cpp

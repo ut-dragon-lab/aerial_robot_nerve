@@ -311,16 +311,28 @@ public:
     ros_entities_ready_ = false;
 
     for (size_t i = sub_entries_.size(); i-- > 0;) {
-      (void)rcl_subscription_fini(sub_entries_[i].sub, &node);
+      if (sub_entries_[i].sub != nullptr) {
+        (void)rcl_subscription_fini(sub_entries_[i].sub, &node);
+        *sub_entries_[i].sub = rcl_get_zero_initialized_subscription();
+      }
     }
     for (size_t i = pub_entries_.size(); i-- > 0;) {
-      (void)rcl_publisher_fini(pub_entries_[i].pub, &node);
+      if (pub_entries_[i].pub != nullptr) {
+        (void)rcl_publisher_fini(pub_entries_[i].pub, &node);
+        *pub_entries_[i].pub = rcl_get_zero_initialized_publisher();
+      }
     }
     for (size_t i = srv_entries_.size(); i-- > 0;) {
-      (void)rcl_service_fini(srv_entries_[i].srv, &node);
+      if (srv_entries_[i].srv != nullptr) {
+        (void)rcl_service_fini(srv_entries_[i].srv, &node);
+        *srv_entries_[i].srv = rcl_get_zero_initialized_service();
+      }
     }
     for (size_t i = timer_entries_.size(); i-- > 0;) {
-      (void)rcl_timer_fini(timer_entries_[i].timer);
+      if (timer_entries_[i].timer != nullptr) {
+        (void)rcl_timer_fini(timer_entries_[i].timer);
+        *timer_entries_[i].timer = rcl_get_zero_initialized_timer();
+      }
     }
 
     sub_entries_.clear();

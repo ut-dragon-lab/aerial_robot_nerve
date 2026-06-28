@@ -76,9 +76,13 @@
 /* USER CODE BEGIN PD */
 #define MICROROS_INIT_PING_TIMEOUT_MS      100
 #define MICROROS_INIT_PING_ATTEMPTS        1
-#define MICROROS_MONITOR_PING_INTERVAL_MS  2000
+#define MICROROS_MONITOR_PING_INTERVAL_MS  500
 #define MICROROS_MONITOR_PING_TIMEOUT_MS   20
 #define MICROROS_MONITOR_PING_ATTEMPTS     1
+#define MICROROS_MONITOR_SESSION_TIMEOUT_MS 20
+#define MICROROS_MONITOR_SESSION_FAIL_LIMIT 2
+#define MICROROS_ENTITY_CREATION_TIMEOUT_MS 100
+#define MICROROS_ENTITY_DESTROY_TIMEOUT_MS 20
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -116,7 +120,7 @@ DMA_HandleTypeDef hdma_usart6_rx;
 osThreadId coreTaskHandle;
 osThreadId rosSpinTaskHandle;
 osThreadId idleTaskHandle;
-osThreadId rosPublishHandle;
+osThreadId imuPublishTaskHandle;
 osThreadId voltageHandle;
 osThreadId canRxHandle;
 osThreadId servoTaskHandle;
@@ -175,7 +179,7 @@ static void MX_USART2_UART_Init(void);
 void coreTaskFunc(void const * argument);
 void rosSpinTaskFunc(void const * argument);
 void idleTaskFunc(void const * argument);
-void rosPublishTask(void const * argument);
+void imuPublishTaskFunc(void const * argument);
 void voltageTask(void const * argument);
 void canRxTask(void const * argument);
 void ServoTaskCallback(void const * argument);
@@ -206,11 +210,31 @@ static bool ensure_ros_mutex_created()
   return true;
 }
 
+static void microros_configure_context_timeouts(void)
+{
+  rmw_context_t* rmw_context = rcl_context_get_rmw_context(&ros_cxt_.support.context);
+  if (rmw_context == nullptr) {
+    return;
+  }
+
+  (void)rmw_uros_set_context_entity_creation_session_timeout(
+    rmw_context,
+    MICROROS_ENTITY_CREATION_TIMEOUT_MS);
+  (void)rmw_uros_set_context_entity_destroy_session_timeout(
+    rmw_context,
+    MICROROS_ENTITY_DESTROY_TIMEOUT_MS);
+}
+
 static void microros_init_all(void)
 {
   // 0) Create muxte for ros
   ensure_ros_mutex_created();
-    
+
+  ros_cxt_.ready.store(false, std::memory_order_release);
+  ros_cxt_.support = rclc_support_t{};
+  ros_cxt_.node = rcl_get_zero_initialized_node();
+  ros_cxt_.executor = rclc_executor_get_zero_initialized_executor();
+
   // 1) Register custom transport (must be done before rclc_support_init)
   microros_transport_init();
   
@@ -223,6 +247,7 @@ static void microros_init_all(void)
   // 2) Init rcl/rclc
   ros_cxt_.allocator = rcl_get_default_allocator();
   rclc_support_init(&ros_cxt_.support, 0, NULL, &ros_cxt_.allocator);
+  microros_configure_context_timeouts();
 
   rclc_node_init_default(&ros_cxt_.node, "stm32_node", "", &ros_cxt_.support);
 
@@ -255,6 +280,10 @@ static void microros_fini_all(void)
 
   (void)rcl_node_fini(&ros_cxt_.node);
   (void)rclc_support_fini(&ros_cxt_.support);
+
+  ros_cxt_.executor = rclc_executor_get_zero_initialized_executor();
+  ros_cxt_.node = rcl_get_zero_initialized_node();
+  ros_cxt_.support = rclc_support_t{};
 
   osMutexRelease(ros_cxt_.ros_mutex);
 }
@@ -462,9 +491,9 @@ int main(void)
   osThreadDef(idleTask, idleTaskFunc, osPriorityIdle, 0, 128);
   idleTaskHandle = osThreadCreate(osThread(idleTask), NULL);
 
-  /* definition and creation of rosPublish */
-  osThreadDef(rosPublish, rosPublishTask, osPriorityNormal, 0, 1024);
-  rosPublishHandle = osThreadCreate(osThread(rosPublish), NULL);
+  /* definition and creation of imuPublishTask */
+  osThreadDef(imuPublishTask, imuPublishTaskFunc, osPriorityNormal, 0, 1024);
+  imuPublishTaskHandle = osThreadCreate(osThread(imuPublishTask), NULL);
 
   /* definition and creation of voltage */
   osThreadDef(voltage, voltageTask, osPriorityNormal, 0, 256);
@@ -1381,6 +1410,7 @@ void rosSpinTaskFunc(void const * argument)
   (void)argument;
 
   uint32_t last_ping = HAL_GetTick();
+  uint8_t session_fail_count = 0;
 
   microros_init_all();
 
@@ -1393,14 +1423,37 @@ void rosSpinTaskFunc(void const * argument)
           osMutexWait(ros_cxt_.ros_mutex, osWaitForever);
           rmw_ret_t ping_ret = rmw_uros_ping_agent(MICROROS_MONITOR_PING_TIMEOUT_MS,
                                                    MICROROS_MONITOR_PING_ATTEMPTS);
+          rmw_ret_t session_ret = RMW_RET_OK;
+          if (ping_ret == RMW_RET_OK)
+            {
+              session_ret = rmw_uros_sync_session(MICROROS_MONITOR_SESSION_TIMEOUT_MS);
+            }
           osMutexRelease(ros_cxt_.ros_mutex);
 
           if (ping_ret != RMW_RET_OK)
             {
+              session_fail_count = 0;
               microros_fini_all();
               microros_init_all();
               last_ping = HAL_GetTick();
               continue;
+            }
+
+          if (session_ret != RMW_RET_OK)
+            {
+              session_fail_count++;
+              if (session_fail_count >= MICROROS_MONITOR_SESSION_FAIL_LIMIT)
+                {
+                  session_fail_count = 0;
+                  microros_fini_all();
+                  microros_init_all();
+                  last_ping = HAL_GetTick();
+                  continue;
+                }
+            }
+          else
+            {
+              session_fail_count = 0;
             }
           last_ping = now;
         }
@@ -1443,16 +1496,16 @@ void idleTaskFunc(void const * argument)
   /* USER CODE END idleTaskFunc */
 }
 
-/* USER CODE BEGIN Header_rosPublishTask */
+/* USER CODE BEGIN Header_imuPublishTaskFunc */
 /**
-* @brief Function implementing the rosPublish thread.
+* @brief Function implementing the imuPublishTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_rosPublishTask */
-void rosPublishTask(void const * argument)
+/* USER CODE END Header_imuPublishTaskFunc */
+void imuPublishTaskFunc(void const * argument)
 {
-  /* USER CODE BEGIN rosPublishTask */
+  /* USER CODE BEGIN imuPublishTaskFunc */
   (void)argument;
 
   for(;;)
@@ -1477,7 +1530,7 @@ void rosPublishTask(void const * argument)
         }
 
   }
-  /* USER CODE END rosPublishTask */
+  /* USER CODE END imuPublishTaskFunc */
 }
 
 /* USER CODE BEGIN Header_voltageTask */

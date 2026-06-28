@@ -120,7 +120,7 @@ DMA_HandleTypeDef hdma_usart6_rx;
 osThreadId coreTaskHandle;
 osThreadId rosSpinTaskHandle;
 osThreadId idleTaskHandle;
-osThreadId rosPublishHandle;
+osThreadId imuPublishTaskHandle;
 osThreadId voltageHandle;
 osThreadId canRxHandle;
 osThreadId servoTaskHandle;
@@ -179,7 +179,7 @@ static void MX_USART2_UART_Init(void);
 void coreTaskFunc(void const * argument);
 void rosSpinTaskFunc(void const * argument);
 void idleTaskFunc(void const * argument);
-void rosPublishTask(void const * argument);
+void imuPublishTaskFunc(void const * argument);
 void voltageTask(void const * argument);
 void canRxTask(void const * argument);
 void ServoTaskCallback(void const * argument);
@@ -491,9 +491,9 @@ int main(void)
   osThreadDef(idleTask, idleTaskFunc, osPriorityIdle, 0, 128);
   idleTaskHandle = osThreadCreate(osThread(idleTask), NULL);
 
-  /* definition and creation of rosPublish */
-  osThreadDef(rosPublish, rosPublishTask, osPriorityNormal, 0, 1024);
-  rosPublishHandle = osThreadCreate(osThread(rosPublish), NULL);
+  /* definition and creation of imuPublishTask */
+  osThreadDef(imuPublishTask, imuPublishTaskFunc, osPriorityNormal, 0, 1024);
+  imuPublishTaskHandle = osThreadCreate(osThread(imuPublishTask), NULL);
 
   /* definition and creation of voltage */
   osThreadDef(voltage, voltageTask, osPriorityNormal, 0, 256);
@@ -1496,16 +1496,16 @@ void idleTaskFunc(void const * argument)
   /* USER CODE END idleTaskFunc */
 }
 
-/* USER CODE BEGIN Header_rosPublishTask */
+/* USER CODE BEGIN Header_imuPublishTaskFunc */
 /**
-* @brief Function implementing the rosPublish thread.
+* @brief Function implementing the imuPublishTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_rosPublishTask */
-void rosPublishTask(void const * argument)
+/* USER CODE END Header_imuPublishTaskFunc */
+void imuPublishTaskFunc(void const * argument)
 {
-  /* USER CODE BEGIN rosPublishTask */
+  /* USER CODE BEGIN imuPublishTaskFunc */
   (void)argument;
 
   for(;;)
@@ -1530,7 +1530,7 @@ void rosPublishTask(void const * argument)
         }
 
   }
-  /* USER CODE END rosPublishTask */
+  /* USER CODE END imuPublishTaskFunc */
 }
 
 /* USER CODE BEGIN Header_voltageTask */

@@ -79,6 +79,14 @@ target_link_libraries(spinal_state_estimation
   rclcpp_lifecycle::rclcpp_lifecycle
 )
 
+add_executable(spinal_namespace_bridge
+  src/spinal_namespace_bridge.cpp
+)
+
+ament_target_dependencies(spinal_namespace_bridge
+  rclcpp
+)
+
 ament_export_dependencies(rclcpp rclcpp_lifecycle spinal_msgs sensor_msgs std_msgs std_srvs)
 
 install(
@@ -86,6 +94,11 @@ install(
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  TARGETS spinal_namespace_bridge
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -129,13 +129,21 @@ bool ThrusterManager::outputThrust(const float* target_thrust, size_t motor_coun
     return true;
   }
 
+  if (!start_control_flag_) {
+    for (size_t i = 0; i < MAX_THRUSTER_NUM; ++i) {
+      target_thrust_[i] = 0.0f;
+      target_pwm_[i] = ThrusterConstants::IDLE_DUTY;
+    }
+    return true;
+  }
+
   if (!configured()) return false;
 
   updateVoltageFactor_();
 
   for (size_t i = 0; i < n; ++i) {
-    target_thrust_[i] = start_control ? target_thrust[i] : 0.0f;
-    target_pwm_[i] = start_control ? convertThrustToDuty_(target_thrust_[i]) : ThrusterConstants::IDLE_DUTY;
+    target_thrust_[i] = target_thrust[i];
+    target_pwm_[i] = convertThrustToDuty_(target_thrust_[i]);
 
     if (target_pwm_[i] < min_duty_) {
       target_pwm_[i] = min_duty_;

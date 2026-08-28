@@ -58,6 +58,8 @@
 #include "servo/servo_ros_module.h"
 #include "thruster/board/thruster_ros_module.h"
 #include "flight_control/board/flight_control_ros_module.h"
+#include "bootloader/bootloader_ros_module.h"
+#include "bootloader/system_bootloader.h"
 
 #include "state_estimate/state_estimate_ros_module.h"
 
@@ -134,7 +136,7 @@ osMailQId canMsgMailHandle;
 
 /* micro ros */
 static RosContext ros_cxt_;
-static RosModuleManager<8> ros_mgr_;
+static RosModuleManager<9> ros_mgr_;
 
 /* /\* sensor instances *\/ */
 ImuRosModule imu_ros_mod_;
@@ -149,6 +151,7 @@ GpsRosModule gps_ros_mod_;
 BatteryStatusRosModule battery_status_ros_mod_;
 ThrusterRosModule thruster_ros_mod_;
 FlightControlRosModule flight_control_ros_mod_;
+BootloaderRosModule bootloader_ros_mod_;
 
 /* servo instance */
 DirectServoRosModule servo_ros_mod_;
@@ -315,6 +318,8 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+  SystemBootloader::restore_application_boot_address();
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -406,6 +411,9 @@ int main(void)
 #endif
   thruster_ros_mod_.setBatteryStatus(battery_status_ros_mod_.getBatteryCore());
   ros_mgr_.add(&thruster_ros_mod_);
+
+  bootloader_ros_mod_.init_hw(thruster_ros_mod_.getThrusterManager());
+  ros_mgr_.add(&bootloader_ros_mod_);
 
 /* #if DSHOT */
   /* estimator_.init(&imu_, &baro_, &gps_, &node, &executor);  // imu + baro + gps => att + alt + pos(xy) */
@@ -1375,6 +1383,7 @@ void coreTaskFunc(void const * argument)
       estimator_ros_mod_.update();
       flight_control_ros_mod_.update();
       thruster_ros_mod_.sendCommand();
+      bootloader_ros_mod_.update();
 
       /* Spine::update(); */
 

@@ -174,6 +174,10 @@ void ThrusterManager::writeDuty(const float* target_duty, size_t motor_count)
 
 void ThrusterManager::sendCommand()
 {
+  if (output_inhibited_.load(std::memory_order_acquire)) {
+    clearTargets_();
+  }
+
   if (!start_control_flag_ && pwm_test_flag_) {
     for (size_t i = 0; i < MAX_THRUSTER_NUM; ++i) {
       target_pwm_[i] = pwm_test_value_[i];
@@ -190,6 +194,20 @@ void ThrusterManager::sendCommand()
     return;
   }
   writeDuty(target_pwm_, motor_number_);
+}
+
+void ThrusterManager::stopOutputs()
+{
+  output_inhibited_.store(true, std::memory_order_release);
+  start_control_flag_ = false;
+  pwm_test_flag_ = false;
+  clearTargets_();
+
+#if DSHOT
+  writeDuty(target_pwm_, motor_number_ == 0 ? 4 : motor_number_);
+#else
+  writeDuty(target_pwm_, motor_number_ == 0 ? 8 : motor_number_);
+#endif
 }
 
 float ThrusterManager::getTargetPwm(uint8_t index) const

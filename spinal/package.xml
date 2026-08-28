@@ -19,6 +19,7 @@
   <depend>std_srvs</depend>
 
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>spinal_firmware</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>rqt_gui</exec_depend>
   <exec_depend>rqt_gui_py</exec_depend>

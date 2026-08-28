@@ -128,6 +128,7 @@ install(DIRECTORY
 
 install(PROGRAMS
   scripts/topic_hz_checker.py
+  scripts/flash_firmware.py
   DESTINATION lib/${PROJECT_NAME}
   )
 

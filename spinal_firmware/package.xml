@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>spinal_firmware</name>
+  <version>0.1.0</version>
+  <description>Colcon cross-build package for the STM32H743 spinal firmware.</description>
+  <maintainer email="j-sugihara@dragon.t.u-tokyo.ac.jp">Junichiro Sugihara</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Standard rosdep key; Ubuntu resolves this to the cross-compiler package. -->
+  <build_depend>gcc-arm-none-eabi</build_depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

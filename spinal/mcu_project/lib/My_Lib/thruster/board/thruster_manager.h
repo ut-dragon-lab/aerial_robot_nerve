@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -35,6 +36,7 @@ public:
   bool outputThrust(const float* target_thrust, size_t motor_count, bool start_control);
   void writeDuty(const float* target_duty, size_t motor_count);
   void sendCommand();
+  void stopOutputs();
 
   bool configured() const { return motor_info_count_ > 0 && max_duty_ > min_duty_; }
 
@@ -81,6 +83,7 @@ private:
   uint32_t pwm_pub_last_time_{0};
   bool pwm_test_flag_{false};
   bool start_control_flag_{false};
+  std::atomic<bool> output_inhibited_{false};
 
   float convertThrustToDuty_(float target_thrust) const;
   void updateVoltageFactor_();
